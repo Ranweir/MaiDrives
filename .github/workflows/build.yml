@@ -1,5 +1,5 @@
 
-name: Build APK From ZIP
+name: Build Mai Shiranui Drive APK
 
 on:
   workflow_dispatch:
@@ -19,32 +19,44 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Find and Extract Project ZIP
+      - name: Find and Extract ZIP
         shell: bash
         run: |
-          if [ ! -f "source.zip" ]; then
-            echo "::error::source.zip not found in repository root"
+          ZIP_FILE=$(find . -type f \
+            \( -iname 'Mai-Shiranui-Drive-GitHub-Build*.zip' \
+            -o -iname 'Mai-Shiranui-Drive-GitHub-Build' \) \
+            -not -path './.git/*' | head -n 1)
+
+          if [ -z "$ZIP_FILE" ]; then
+            echo "::error::Mai-Shiranui-Drive-GitHub-Build ZIP not found"
+            echo "Files available in repository:"
+            find . -maxdepth 3 -type f
             exit 1
           fi
 
-          mkdir -p extracted
-          unzip -q source.zip -d extracted
+          echo "Found ZIP: $ZIP_FILE"
 
-          PACKAGE_JSON=$(find extracted -type f -name package.json \
+          mkdir -p extracted
+          unzip -oq "$ZIP_FILE" -d extracted
+
+          PACKAGE_JSON=$(find extracted -type f \
+            -name package.json \
             -not -path '*/node_modules/*' | head -n 1)
 
           if [ -z "$PACKAGE_JSON" ]; then
-            echo "::error::package.json not found inside ZIP"
+            echo "::error::package.json missing inside ZIP"
             exit 1
           fi
 
           APP_DIR=$(dirname "$PACKAGE_JSON")
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
 
-          echo "Project found at: $APP_DIR"
+          echo "Project directory: $APP_DIR"
 
-          test -d "$APP_DIR/android"
-          test -f "$APP_DIR/capacitor.config.json"
+          if [ ! -d "$APP_DIR/android" ]; then
+            echo "::error::Android project folder missing"
+            exit 1
+          fi
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -60,19 +72,20 @@ jobs:
       - name: Install Dependencies
         working-directory: ${{ env.APP_DIR }}
         run: |
-          if [ ! -f package-lock.json ]; then
-            npm install --package-lock-only
+          if [ -f package-lock.json ]; then
+            npm ci
+          else
+            npm install
           fi
-          npm ci
 
-      - name: Build Web Game
+      - name: Build Web Assets
         working-directory: ${{ env.APP_DIR }}
         run: npm run build
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
 
-      - name: Install Android SDK Packages
+      - name: Install Android SDK
         run: |
           sdkmanager "platforms;android-34" \
                      "build-tools;34.0.0"
@@ -81,7 +94,7 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         run: npx cap sync android
 
-      - name: Build Android APK
+      - name: Build APK
         working-directory: ${{ env.APP_DIR }}/android
         run: |
           chmod +x gradlew
