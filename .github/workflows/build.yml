@@ -28,13 +28,9 @@ jobs:
             -not -path './.git/*' | head -n 1)
 
           if [ -z "$ZIP_FILE" ]; then
-            echo "::error::Mai-Shiranui-Drive-GitHub-Build ZIP not found"
-            echo "Files available in repository:"
-            find . -maxdepth 3 -type f
+            echo "::error::Project ZIP not found"
             exit 1
           fi
-
-          echo "Found ZIP: $ZIP_FILE"
 
           mkdir -p extracted
           unzip -oq "$ZIP_FILE" -d extracted
@@ -44,19 +40,14 @@ jobs:
             -not -path '*/node_modules/*' | head -n 1)
 
           if [ -z "$PACKAGE_JSON" ]; then
-            echo "::error::package.json missing inside ZIP"
+            echo "::error::package.json missing"
             exit 1
           fi
 
           APP_DIR=$(dirname "$PACKAGE_JSON")
           echo "APP_DIR=$APP_DIR" >> "$GITHUB_ENV"
 
-          echo "Project directory: $APP_DIR"
-
-          if [ ! -d "$APP_DIR/android" ]; then
-            echo "::error::Android project folder missing"
-            exit 1
-          fi
+          test -d "$APP_DIR/android"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -71,12 +62,7 @@ jobs:
 
       - name: Install Dependencies
         working-directory: ${{ env.APP_DIR }}
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install
-          fi
+        run: npm install
 
       - name: Build Web Assets
         working-directory: ${{ env.APP_DIR }}
@@ -84,8 +70,10 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
 
-      - name: Install Android SDK
+      - name: Install Android Platform
         run: |
           sdkmanager "platforms;android-34" \
                      "build-tools;34.0.0"
@@ -94,7 +82,7 @@ jobs:
         working-directory: ${{ env.APP_DIR }}
         run: npx cap sync android
 
-      - name: Build APK
+      - name: Build Android APK
         working-directory: ${{ env.APP_DIR }}/android
         run: |
           chmod +x gradlew
